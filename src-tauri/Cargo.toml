@@ -1,0 +1,63 @@
+[package]
+name = "backend"
+version = "1.0.0"
+authors = ["Elijah Philip"]
+description = "A chatting application"
+documentation = "https://example.com/bar"
+edition = "2021"
+rust-version = "1.67"
+homepage = "https://example.com/bar"
+keywords = ["chat", "application", "real-time"]
+license = "MIT"                                    # Replace with your preferred license
+readme = "README.md"                               # Path to your README file
+categories = ["network-programming", "real-time"]
+repository = "https://github.com/username/backend" # Replace with your repo URL
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "test_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.5", features = [] }
+
+[dependencies]
+tauri-plugin-opener = "2.0.5"
+tauri = { version = "2.0.5", features = [] }
+axum = "0.8.1"                                                                 # Adjust version as per your requirements
+tokio = { version = "1.43.0", features = ["full"] }
+tower = "0.5.2"                                                                # Use the latest version compatible with axum
+socketioxide = "0.15.1"                                                        # Replace with the actual version or source if available
+tracing = "0.1.41"
+serde_json = "1.0.137"
+tracing-subscriber = { version = "0.3.19" }
+tower-http = { version = "0.6.2", features = ["trace", "cors", "fs"] }
+serde = "1.0.217"
+sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio", "time"] }
+argon2 = "0.5.3"
+anyhow = "1.0.95"
+dotenvy = "0.15.7"
+postgres = "0.19.9"
+sqlx-postgres = "0.8.3"
+thiserror = "2.0.11"
+rand = "0.8.5"
+email-verifier = "0.1.4"
+lettre = "0.11.1"
+totp-rs = { version = "5.6.0", features = ["gen_secret", "otpauth"] }
+chrono = "0.4.39"
+mailgun-rs = "1.0.1"
+once_cell = "1.20.2"
+dotenv = "0.15.0"
+tracing-appender = "0.2.3"
+tower-sessions = "0.14.0"
+tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
+
+tauri-plugin-autostart = "2.0.0-alpha.2"
+openidconnect = "4.0.0"
+sysinfo = "0.29.11"
+log = "0.4.25"
+servedir = "0.1.0"
+redis = { version = "0.28.2", features = ["tokio-comp", "aio"] }
+rustls = "0.23.19"

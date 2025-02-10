@@ -1,0 +1,117 @@
+/*
+ * @NOTE: Prepend a `~` to css file paths that are in your node_modules
+ *        See https://github.com/webpack-contrib/sass-loader#imports
+ */
+
+ /*
+ Nice Linear Gradiant
+     #1D2671 30.09%,
+     #C33764 81.77%
+ */
+ :root {
+  --rounding-none: 0px;
+  --rounding-xs: 4px;
+  --rounding-sm: 6px;
+  --rounding-normal: 8px;
+  --rounding-md: 12px;
+  --rounding-lg: 16px;
+  --rounding-xl: 20px;
+  --rounding-xxl: 24px;
+  --rounding-full: 100%;
+  --spacing-none: 0px;
+  --spacing-0-5: 4px;
+  --spacing-1: 8px;
+  --spacing-1-5: 12px;
+  --spacing-2: 16px;
+  --spacing-2-5: 20px;
+  --spacing-3: 24px;
+  --spacing-4: 32px;
+  --spacing-5: 40px;
+  --spacing-6: 48px;
+  --spacing-7: 56px;
+  --spacing-8: 64px;
+  --spacing-9: 80px;
+  --spacing-10: 96px;
+  --spacing-11: 112px;
+  --spacing-12: 168px;
+  --spacing-13: 224px;
+  --darkreader-bg--Base-White: var(--darkreader-background-ffffff, #0f1112);
+  --darkreader-text--Base-White: var(--darkreader-text-ffffff, #c9c7c4);
+  --darkreader-text--grey-50: #bab8b3;
+  --darkreader-bg--grey-100: #282c2d;
+  --darkreader-text--grey-100: var(--darkreader-text-cdcece, #ada9a2);
+  --darkreader-text--grey-200: var(--darkreader-text-9c9c9d, #918a80);
+  --darkreader-border--grey-200: #3d4345;
+  --darkreader-text--grey-300: #8c867b;
+  --darkreader-bg--grey-400: #272b2d;
+  --darkreader-text--grey-400: #a29d96;
+  --darkreader-bg--grey-500: #1a1c1e;
+  --darkreader-text--grey-500: #aea9a3;
+  --darkreader-border--grey-500: #686055;
+  --darkreader-bg--grey-600: #0c0e0f;
+  --darkreader-text--grey-600: #b9b5b1;
+  --darkreader-border--grey-600: #6f6659;
+  --darkreader-bg--grey-700: #060708;
+  --darkreader-bg--grey-800: #030303;
+  --darkreader-bg--grey-900: var(--darkreader-background-07080a, #000001);
+  --Base-Black: #000;
+  --main-font: var(--font-inter),sans-serif;
+  --monospace-font: var(--font-jetbrains-mono),Menlo,Monaco,Courier,monospace;
+  --container-xs-width: 746px;
+  --container-sm-width: 1064px;
+  --container-width: 1204px;
+  --container-lg-width: 1280px;
+  --grid-gap: 32px;
+  --navbar-width: var(--container-width);
+  --darkreader-bg--background: var(--darkreader-bg--grey-900);
+  --reverse-background: #fff;
+  --darkreader-bg--font-color-rgb: var(--darkreader-background-ffffff, #0f1112);
+  --darkreader-text--font-color-rgb: var(--darkreader-text-ffffff, #c9c7c4);
+  --darkreader-border--font-color-rgb: var(--darkreader-border-ffffff, #24282a);
+  --darkreader-text--reverse-font-color-rgb: var(--darkreader-text-000000, #c9c7c4);
+  --darkreader-bg--lines-color-rgb: var(--darkreader-background-ffffff, #0f1112);
+  --darkreader-border--lines-color-rgb: var(--darkreader-border-ffffff, #24282a);
+  --radius-md: 6px;
+  --blue-dark: #56c2ff;
+  --darkreader-bg--red-dark: var(--darkreader-background-ff6363, #7b0000);
+  --darkreader-text--red-dark: var(--darkreader-text-ff6363, #dd4e4e);
+  --darkreader-border--red-dark: var(--darkreader-border-ff6363, #7f0000);
+  --color-bg: var(--grey-900);
+  --color-bg-100: #101111;
+  --color-bg-200: #18191a;
+  --color-bg-300: #313133;
+  --color-bg-400: #494b4d;
+  --color-fg: #f4f4f6;
+  --color-fg-200: #c2c7ca;
+  --color-fg-300: #78787c;
+  --color-fg-400: #5e6366;
+  --darkreader-text--color-yellow: #ddac30;
+  --color-yellow-transparent: rgba(255,197,51,.15);
+  --darkreader-text--color-red: #dd4d4d;
+  --color-red-transparent: rgba(255,97,97,.15);
+  --darkreader-text--color-blue: #46a6dd;
+  --color-blue-transparent: rgba(87,193,255,.15);
+  --color-green: #59d499;
+  --color-green-transparent: rgba(89,212,153,.15);
+  --color-border: #242728;
+  --color-button-bg: hsla(0,0%,100%,.815);
+  --color-button-bg-hover: #fff;
+  --color-button-fg: #18191a;
+}
+
+body {
+  position: relative;
+  color: white;
+  height: 100vh;
+  background: linear-gradient(
+    240deg,
+    #12100E 0.09%,
+    #2B4162 90.77%
+
+  );
+  font-family: sans-serif;
+  overflow-y: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
