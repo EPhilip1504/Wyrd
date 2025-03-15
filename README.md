@@ -1,0 +1,2 @@
+# Wyrd
+A chatting app
