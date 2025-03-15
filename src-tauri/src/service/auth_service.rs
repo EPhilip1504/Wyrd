@@ -1,7 +1,7 @@
+use crate::otp::{generate_otp, send_otp};
 use anyhow::Error;
-use axum::Router;
+use axum::{http::StatusCode, response::IntoResponse, Router};
 use chrono::{DateTime, Local, Utc};
-use email_verification::{generate_otp, send_otp};
 use sqlx::{
     error,
     types::{time::PrimitiveDateTime, Json},
@@ -11,13 +11,10 @@ use std::{fmt::Display, path, ptr::null, vec};
 use thiserror::Error;
 use totp_rs::Secret;
 
-#[path = "../service/email_verification.rs"]
-mod email_verification;
-
 #[path = "../utils/password.rs"]
 mod password;
 
-use crate::auth_handler::{LoginReq, OTPReq, SignupReq};
+use crate::auth_handler::{LoginReq, OTPVerReq, SignupReq};
 
 #[derive(Debug, Error)]
 pub enum AuthenticationErrors {
@@ -44,6 +41,10 @@ pub enum AuthenticationErrors {
 
     #[error("")]
     EmailSendError(String),
+}
+
+struct Record {
+    password: String,
 }
 
 pub async fn signup(pool: &PgPool, payload: &SignupReq) -> Result<(), Vec<AuthenticationErrors>> {
@@ -82,20 +83,22 @@ pub async fn signup(pool: &PgPool, payload: &SignupReq) -> Result<(), Vec<Authen
         .await
         .map_err(|e| vec![AuthenticationErrors::HashError(e.to_string())])?;
 
+    //Used for secret key generations for the totp-rs crate.
     let secret_key = Secret::generate_secret().to_string();
 
     sqlx::query!(
-          "INSERT INTO users (name, username, email, password, last_login, status, activity, user_verified, totp_secret)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          "INSERT INTO users (name, username, email, password, last_login, status, activity, user_verified, totp_secret,personalization)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
           &payload.name,                  // $1: User's name
           &payload.username,              // $2: User's username
           &payload.email,                 // $3: User's email
           hashed_password,               // $4: Hashed password
-          PrimitiveDateTime::MAX, // $5: last_login (None for new users)
+          PrimitiveDateTime::MAX,        // $5: last_login (None for new users)
           "active",                      // $6: status (default to "active")
           "offline",                     // $7: activity (default to "offline")
-          false,                          // $8: user_verified (default to false)
+          false,                         // $8: user_verified (default to false)
           secret_key,
+          serde_json::json!({}),
       )
     .execute(pool)
     .await
@@ -105,13 +108,31 @@ pub async fn signup(pool: &PgPool, payload: &SignupReq) -> Result<(), Vec<Authen
 }
 
 pub async fn login(pool: &PgPool, payload: LoginReq) -> Result<(), AuthenticationErrors> {
-    let user = sqlx::query!(
-        "SELECT password FROM users WHERE username = $1 OR email = $2",
-        payload.username,
-        payload.email
-    )
-    .fetch_optional(pool)
-    .await?;
+    let user = match (payload.username.as_ref(), payload.email.as_ref()) {
+        (Some(username), None) => {
+            sqlx::query_as!(
+                Record,
+                "SELECT password FROM users WHERE username = $1",
+                username,
+            )
+            .fetch_optional(pool)
+            .await?
+        }
+        (None, Some(email)) => {
+            sqlx::query_as!(
+                Record,
+                "SELECT password FROM users WHERE email = $1",
+                payload.email.unwrap(),
+            )
+            .fetch_optional(pool)
+            .await?
+        }
+        _ => {
+            return (Err(AuthenticationErrors::LoginError(
+                ("Error retrieving username and email.").to_string(),
+            )));
+        }
+    };
 
     match user {
         Some(record) => {
@@ -121,9 +142,15 @@ pub async fn login(pool: &PgPool, payload: LoginReq) -> Result<(), Authenticatio
             {
                 Ok(())
             } else {
-                Err(AuthenticationErrors::LoginError(
-                    "Your username or password is incorrect.".to_string(),
-                ))
+                if payload.username.is_some() {
+                    Err(AuthenticationErrors::LoginError(
+                        "Your username or password is incorrect.".to_string(),
+                    ))
+                } else {
+                    Err(AuthenticationErrors::LoginError(
+                        "Your email or password is incorrect.".to_string(),
+                    ))
+                }
             }
         }
         None => Err(AuthenticationErrors::LoginError(

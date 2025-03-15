@@ -1,3 +1,13 @@
 .FormBorder {
-  background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+#resend_button {
+    color: blueviolet;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+#resend_button:hover {
+    text-decoration: underline;
 }

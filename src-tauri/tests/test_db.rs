@@ -1,20 +1,17 @@
 #![allow(unused)]
 #![allow(warnings)]
-#[cfg(test)]
-#[path = "../src/service/auth_service.rs"]
-mod auth_service;
-
-#[path = "../src/handler/auth_handler.rs"]
-mod auth_handler;
-
-use std::sync::Arc;
-
+use anyhow::{Context, Result};
 use axum::{
     http::{response, Response},
     Extension,
 };
+use dotenvy::dotenv;
 use sqlx::PgPool;
+use sqlx::{Pool, Postgres};
+#[cfg(test)]
+use std::sync::Arc;
 
+/*
 mod tests {
     use super::*;
     use sqlx::PgPool;
@@ -29,7 +26,7 @@ mod tests {
         let username = "john".to_string();
         let email = "john@example.com";
 
-        let users = sqlx::query!("SELECT totp_secret FROM users WHERE email = $1", email)
+        let users = sqlx::query!("SELECT user_verified FROM users WHERE email = $1", email)
             .fetch_optional(&pool)
             .await
             .expect("REASON");
@@ -37,6 +34,17 @@ mod tests {
         println!("{:?}", users.is_some());
         println!("{:?}", users);
     }
+}
+ */
+#[tokio::test]
+async fn test_db_connection() {
+    dotenv().ok();
+    let database_url = dotenvy::var("DATABASE_URL")
+        .context("DATABASE_URL must be set")
+        .unwrap();
+
+    println!("{}", database_url);
+    println!("Current dir: {:?}", std::env::current_dir());
 }
 /*
 async fn test_signup(){

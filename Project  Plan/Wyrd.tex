@@ -1,0 +1,200 @@
+\documentclass{scrreprt}
+\usepackage{listings}
+\usepackage{underscore}
+\usepackage{graphicx}
+\usepackage[bookmarks=true]{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\hypersetup{
+    bookmarks=false,    % show bookmarks bar?
+    pdftitle={Software Requirement Specification},    % title
+    pdfauthor={Jean-Philippe Eisenbarth},                     % author
+    pdfsubject={TeX and LaTeX},                        % subject of the document
+    pdfkeywords={TeX, LaTeX, graphics, images}, % list of keywords
+    colorlinks=true,       % false: boxed links; true: colored links
+    linkcolor=blue,       % color of internal links
+    citecolor=black,       % color of links to bibliography
+    filecolor=black,        % color of file links
+    urlcolor=purple,        % color of external links
+    linktoc=page            % only page is linked
+}%
+\def\myversion{1.0 }
+\date{}
+%\title{%
+
+%}
+\usepackage{hyperref}
+\begin{document}
+
+\begin{flushright}
+    \rule{16cm}{5pt}\vskip1cm
+    \begin{bfseries}
+        \Huge{SOFTWARE REQUIREMENTS\\ SPECIFICATION}\\
+        \vspace{1.5cm}
+        for\\
+        \vspace{1.5cm}
+        Wyrd\\
+        \vspace{1.5cm}
+        \LARGE{Version \myversion}\\
+        \vspace{1.5cm}
+        Prepared by: Elijah Philip\\
+        \today\\
+    \end{bfseries}
+\end{flushright}
+
+\tableofcontents
+
+\chapter{Introduction}
+Wyrd is an application that allows users from around the globe 
+to chat with each other individually, or with groups. The app is designed using rust for its performance 
+so users can seamlessly communicate without any latency issues 
+and its reliability due to its memory safety features. The app is available on Windows, macOS, and Linux, ensuring accessibility for a broad audience of PC users.
+\section{Purpose}
+This document serves as a comprehensive guide outlining the technical requirements, 
+functional specifications, and performance benchmarks needed to construct the Wyrd chat application. 
+The application aims to enable seamless, real-time communication across the globe, leveraging Rust’s 
+performance and memory safety features for a fast, reliable, and secure user experience.
+
+\section{Project Scope}
+The goal of this project is to develop Wyrd, a cross-platform chat application enabling seamless communication via text, voice, and file sharing. 
+The key features include: 
+    \begin{enumerate}
+        \item \textbf{Core Communication}
+            \begin{itemize}
+                \item Real-time text and voice communication.
+                \item File sharing capabilities for various formats.
+            \end{itemize} 
+
+        \item \textbf{User Management}
+        \begin{itemize}
+            \item Account registration and login.
+            \item Account management (e.g., profile updates, password changes).
+        \end{itemize}
+
+        \item \textbf{Enhanced Messaging Features}
+        \begin{itemize}
+       \item     Group chat creation and management.
+       \item     Search functionality for previous messages and contacts.
+       \item     User presence indicators (online/offline status).
+       \item     Typing indicators to show when users are typing.
+       \item     Message formatting (e.g., bold, italics, custom fonts).
+       \item     Notifications, even when the app is closed.
+       \item     Read receipts to know what time the message was sent and if it was read.
+        \end{itemize}
+    \end{enumerate}
+\section{Target Audience}
+This document is intended for:
+    \begin{itemize}
+        \item \textbf{Developers and Maintainers}: To outline the technical and functional goals of Wyrd and provide a roadmap for its development.
+        \item \textbf{End Users}: To give an overview of the application's intended features and how it aims to improve communication.
+        \item \textbf{System Administrators}: To guide the setup and maintenance of the application infrastructure.
+    \end{itemize}
+The primary audience is the developer (myself), as this document will help focus on achievable goals and functionalities during the application's creation.
+
+\section{Definitions and Acronyms}
+
+\chapter{Overall Description}
+
+\section{Product Perspective}
+    \subsection{System Interfaces}
+    The application runs on Windows, Mac, and Linux. It is not supported by browsers.
+    \subsection{User Interfaces}
+    The application GUI provides menus, buttons, textboxes, scrollbar, panes, containders, and grids allowing for
+    easy control by a keyboard and a mouse. 
+    \subsection{Hardware Interfaces}
+    \begin{enumerate}
+        \item Supported Platforms
+            \begin{itemize}
+                \item
+            \end{itemize}
+        \item Input Devices
+            \begin{itemize}
+                \item Keyboard and mouse (required for interaction with the user interface).
+                \item Microphone (optional, required for voice chat functionality).
+            \end{itemize}
+        \item Output Devices
+            \begin{itemize}
+                \item Monitor or screen (to display the application’s graphical interface).
+                \item Speakers or headphones (optional, required for voice chat and notification sounds).
+            \end{itemize}
+    \end{enumerate}
+    \subsection{Software Interfaces}
+    The Wyrd application interacts with various software systems to deliver its features efficiently and securely:
+        \begin{enumerate}
+            \item OS APIs
+            \begin{itemize}
+                \item Windows, macOS, and Linux APIs are used for notifications, file handling, and window management to provide a seamless user experience across platforms
+            \end{itemize}
+            \item Frameworks and Libraries
+            \begin{itemize}
+                \item The user interface is developed using the Tauri framework for lightweight, cross-platform compatibility. Networking and real-time communication are handled via Tokio, while message and file encryption utilize the RustCrypto library.
+            \end{itemize}
+            \item Third-Party APIs
+            \begin{itemize}
+                \item Sendgrid is used to handle user email verification and password resets.
+                \item Google, Microsoft, and Github Authentication are used as alternative ways for users to log in or sign up.
+            \end{itemize}
+            \item Database
+            \begin{itemize}
+                \item Postgre SQL is used as the database to store past message, and personal information.
+            \end{itemize}
+        \end{enumerate}
+\section{User Classes and Characteristics}
+Wyrd is designed for the following user classes:
+\begin{itemize}
+    \item \textbf{End Users: }These users value ease of use and expect core features like text and voice chat, file sharing, and group management to work reliably across platforms.
+    \item \textbf{System Administrators: }Technically skilled users responsible for maintaining the system in server-hosted environments. They require tools for monitoring, security, and deployment management.
+\end{itemize}
+
+\section{Product Functions}
+    
+
+\section{Operating Environment}
+
+\section{Design}
+
+\section{Assumptions and Dependencies}
+
+\section{Constraints}
+
+\section{Risk Analysis}
+
+
+
+\chapter{System Features and Requirements}
+
+\section{Description and Priority}
+
+
+\section{Functional Requirements}
+
+\section{Nonfunctional Requirements}
+\section{Data Flow Requirements}
+\section{Interface Requirements}
+
+
+
+\chapter{Other Nonfunctional Requirements}
+
+
+\section{Performance Requirements}
+
+\section{Security Requirements}
+
+\section{Software Quality Attributes}
+
+
+\section{Business Rules}
+
+
+\chapter{Other Requirements}
+
+\section{Legal and Regulatory Requirements}
+
+\section{Hardware Requirements}
+
+\section{External Interfaces}
+
+\section{Deployment Requirements}
+
+\end{document}

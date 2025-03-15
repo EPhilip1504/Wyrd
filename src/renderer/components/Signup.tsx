@@ -56,12 +56,7 @@ export function Form(): React.JSX.Element {
       );
       console.log("Registration successful:", response.data);
 
-      const user_emails = response.data.email;
-      const user_names = response.config.data;
-
-      navigate("/otp", {
-        state: { user_email: user_emails, user_name: user_names },
-      });
+      navigate("/otp");
     } catch (error) {
       console.error("Error creating account:", error);
       if (axios.isAxiosError(error)) {

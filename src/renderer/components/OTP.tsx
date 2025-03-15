@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import OtpInput from "react-otp-input";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
+import { maskEmail } from "react-email-mask";
+import "../styles/OTP.css";
 
 function OTP1() {
   const [
@@ -17,29 +20,43 @@ function OTP1() {
     inputTypeConf: "isInputNum" as const,
   });
 
-  const OTP_URL = "http://localhost:1420/otp";
-  const RESEND_OTP_URL = "http://localhost:1420/resend-otp";
+  const OTP_URL = "http://localhost:3000/otp";
+  const RESEND_OTP_URL = "http://localhost:3000/resend-otp";
   const navigate = useNavigate();
   const location = useLocation();
-  const userEmail = location.state?.email;
-  const userName = location.state?.name as string;
+  const [isDisabled, setDisabled] = useState(true);
+
+  const handleDisable = () => {
+    setDisabled(true);
+    setTimeout(() => {
+      setDisabled(false);
+    }, 3000);
+  };
+
+  interface OTP {
+    entered_code: string;
+  }
+
   const [isResending, setIsResending] = useState(false);
 
-  const onSubmit = async (enteredCode: string) => {
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  let userName;
+
+  useEffect(() => {
+    invoke("client_info_otp")
+      .then((message: any) => {
+        setUserEmail(message.email);
+      })
+      .catch((error) => console.error(error));
+  }, []); // Runs only once when the component mounts
+
+  const onSubmit = async (code: OTP) => {
     try {
-      const response = await axios.post(
-        OTP_URL,
-        {
-          entered_code: String(enteredCode),
-          name: userName,
-          email: userEmail,
+      const response = await axios.post(OTP_URL, code, {
+        headers: {
+          "Content-Type": "application/json",
         },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
+      });
       console.log("OTP verified successfully:", response.data);
       navigate("/homepage");
     } catch (error) {
@@ -53,30 +70,19 @@ function OTP1() {
   const handleOTPChange = (otpValue: string): void => {
     setConfig((prevConfig) => ({ ...prevConfig, otp: otpValue }));
     if (otpValue.length === 6) {
-      //const codeObject: string = { entered_code: otpValue };
-      //onSubmit(codeObject); // Pass the OTP to onSubmit
-      console.log(userName);
-      console.log(userEmail);
-      console.log(otpValue);
+      const codeObject: OTP = { entered_code: otpValue };
+      onSubmit(codeObject); // Pass the OTP to onSubmit
     }
   };
 
   const handleResendOTP = async () => {
     try {
-      const response = await axios.post(RESEND_OTP_URL, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      console.log("OTP sent successfully:", response.data);
+      await invoke("resend_otp_handler");
+      handleDisable();
     } catch (error) {
       console.error("Error with sending:", error);
-      if (axios.isAxiosError(error)) {
-        console.error("Axios error:", error.response?.data);
-      }
     }
   };
-
   const clearOtp = (): void => {
     setConfig((prevConfig) => ({ ...prevConfig, otp: "" })); // Clear OTP
   };
@@ -102,7 +108,23 @@ function OTP1() {
         boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.25)", // Optional styling for better visibility
       }}
     >
-      <h1>Please enter the OTP sent to {userEmail}</h1>
+      <h1
+        style={{
+          marginBottom: "70px",
+        }}
+      >
+        Verify Email Address
+      </h1>
+
+      <p>{`Please enter the OTP we've sent to`}</p>
+      <p
+        style={{
+          marginBottom: "15px",
+        }}
+      >
+        {userEmail ?? "your email"}
+      </p>
+
       <div
         className="inputArea"
         style={{
@@ -135,17 +157,12 @@ function OTP1() {
       <p>
         Didn&apos;t get the code?{""}{" "}
         <span
-          onClick={(e) => (isResending ? handleResendOTP : e?.preventDefault())}
+          onClick={(e) => {
+            e.preventDefault();
+            handleResendOTP();
+          }} //(!isDisabled ? handleResendOTP : e.preventDefault())}
           role="presentation"
-          style={
-            isResending
-              ? {
-                  color: "blue",
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                }
-              : { color: "blue", textDecoration: "none" }
-          }
+          id="resend_button"
         >
           Resend
         </span>
