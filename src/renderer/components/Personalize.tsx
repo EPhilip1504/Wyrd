@@ -27,6 +27,9 @@ function Personalize() {
           element.style.backgroundColor = "rgba(30, 30, 30, 0.85)";
           element.style.color = "white";
           element.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.2)";
+          // Apply dark mode animation
+          element.classList.remove("light-mode-border");
+          element.classList.add("dark-mode-border");
         }
       }
     } else {
@@ -41,6 +44,9 @@ function Personalize() {
           element.style.backgroundColor = "rgba(240, 240, 240, 0.85)";
           element.style.color = "#333";
           element.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.1)";
+          // Apply light mode animation
+          element.classList.remove("dark-mode-border");
+          element.classList.add("light-mode-border");
         }
       }
     }
