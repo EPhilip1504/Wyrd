@@ -12,6 +12,7 @@ import WelcomePage from "./renderer/components/WelcomePage";
 import LoginSignup, { Form } from "./renderer/components/Signup";
 import { invoke } from "@tauri-apps/api/core";
 import OTP from "./renderer/components/OTP";
+import Personalize from "./renderer/components/Personalize";
 export default function App() {
   const [data, setData] = useState("");
   return (
@@ -24,6 +25,8 @@ export default function App() {
         <Route path="/signup" element={<Form />} />
 
         <Route path="/otp" element={<OTP />} />
+
+        <Route path="/personalize" element={<Personalize />} />
       </Routes>
     </Router>
   );

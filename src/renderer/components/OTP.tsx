@@ -58,7 +58,7 @@ function OTP1() {
         },
       });
       console.log("OTP verified successfully:", response.data);
-      navigate("/homepage");
+      navigate("/personalize");
     } catch (error) {
       console.error("Error with verification:", error);
       if (axios.isAxiosError(error)) {
