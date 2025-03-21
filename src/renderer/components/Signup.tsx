@@ -383,7 +383,7 @@ export function Form(): React.JSX.Element {
                   I already have an account
                 </a>
               </form>
-              <button onClick={() => navigate("/otp")}>OTP</button>
+              <button onClick={() => navigate("/personalize")}>OTP</button>
             </div>
           </div>
         </div>

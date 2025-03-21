@@ -127,8 +127,8 @@ pub async fn send_otp(token: &str, client_email: &str, client_name: &str) -> Res
         .unwrap();
 
     let gmail_creds = Credentials::new(
-        "thewyrdteam@gmail.com".to_owned(),
-        "xgzx svcc jfoe woxs ".to_owned(),
+        std::env::var("SMTP_USERNAME").expect("SMTP_USERNAME must be set"),
+        std::env::var("SMTP_PASSWORD").expect("SMTP_PASSWORD must be set"),
     );
 
     let mailer = SmtpTransport::relay("smtp.gmail.com")

@@ -12,6 +12,7 @@
   "dependencies": {
     "@emotion/styled": "^11.14.0",
     "@hookform/resolvers": "^3.10.0",
+    "@mui/icons-material": "^6.4.8",
     "@mui/material": "^6.4.2",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
