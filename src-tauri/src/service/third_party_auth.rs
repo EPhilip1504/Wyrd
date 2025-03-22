@@ -48,3 +48,16 @@ type GoogleProviderMetadata = ProviderMetadata<
     CoreResponseType,
     CoreSubjectIdentifierType,
 >;
+
+async fn google_auth() {
+    env_logger::init();
+
+    let google_client_id = ClientId::new(
+        env::var("GOOGLE_CLIENT_ID").expect("Missing the GOOGLE_CLIENT_ID environment variable."),
+    );
+
+    let google_client_secret = ClientSecret::new(
+        env::var("GOOGLE_CLIENT_SECRET")
+            .expect("Missing the GOOGLE_CLIENT_SECRET environment variable."),
+    );
+}
