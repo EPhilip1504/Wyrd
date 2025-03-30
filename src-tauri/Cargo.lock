@@ -434,6 +434,7 @@ dependencies = [
  "axum-macros 0.4.2",
  "bincode",
  "chrono",
+ "do_username",
  "dotenv",
  "dotenvy",
  "email-verifier",
@@ -444,6 +445,7 @@ dependencies = [
  "lettre",
  "log",
  "mailgun-rs",
+ "oauth2",
  "once_cell",
  "openidconnect",
  "postgres",
@@ -1414,6 +1416,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.98",
+]
+
+[[package]]
+name = "do_username"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "170a953e1a8a231eb2d2d7964539efbb49cc12bb7af1af66b6f069a469657623"
+dependencies = [
+ "lazy_static",
+ "rand 0.7.3",
 ]
 
 [[package]]
@@ -5697,6 +5709,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a007b6936676aa9ab40207cde35daab0a04b823be8ae004368c0793b96a61e0"
 dependencies = [
  "bytes 1.9.0",
+ "chrono",
  "crc",
  "crossbeam-queue 0.3.12",
  "either",
@@ -5774,6 +5787,7 @@ dependencies = [
  "bitflags 2.8.0",
  "byteorder",
  "bytes 1.9.0",
+ "chrono",
  "crc",
  "digest",
  "dotenvy",
@@ -5816,6 +5830,7 @@ dependencies = [
  "base64 0.22.1",
  "bitflags 2.8.0",
  "byteorder",
+ "chrono",
  "crc",
  "dotenvy",
  "etcetera",
@@ -5851,6 +5866,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f85ca71d3a5b24e64e1d08dd8fe36c6c95c339a896cc33068148906784620540"
 dependencies = [
  "atoi",
+ "chrono",
  "flume",
  "futures-channel",
  "futures-core",

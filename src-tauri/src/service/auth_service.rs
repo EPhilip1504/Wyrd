@@ -87,8 +87,8 @@ pub async fn signup(pool: &PgPool, payload: &SignupReq) -> Result<(), Vec<Authen
     let secret_key = Secret::generate_secret().to_string();
 
     sqlx::query!(
-          "INSERT INTO users (name, username, email, password, last_login, status, activity, user_verified, totp_secret,personalization)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+          "INSERT INTO users (name, username, email, password, last_login, status, activity, user_verified, totp_secret, personalization, profile_url, provider, provider_user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
           &payload.name,                  // $1: User's name
           &payload.username,              // $2: User's username
           &payload.email,                 // $3: User's email
@@ -97,8 +97,11 @@ pub async fn signup(pool: &PgPool, payload: &SignupReq) -> Result<(), Vec<Authen
           "active",                      // $6: status (default to "active")
           "offline",                     // $7: activity (default to "offline")
           false,                         // $8: user_verified (default to false)
-          secret_key,
-          serde_json::json!({}),
+          secret_key,                    //$9 secret key for otp and other verification (DO NOT DELETE)
+          serde_json::json!({}),        // $10: personalization
+          None::<String>,               // $11: profile_url
+          None::<String>,               // $12: provider
+          None::<String>,               // $13: provider_user_id
       )
     .execute(pool)
     .await
