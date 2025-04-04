@@ -5,18 +5,31 @@ use anyhow::anyhow;
 use do_username::do_username;
 use env_logger::fmt::Timestamp;
 use log::log;
-use oauth2::helpers;
-use openidconnect::core::{
-    CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreResponseType,
+use oauth2::basic::{
+    BasicErrorResponse, BasicErrorResponseType, BasicRevocationErrorResponse,
+    BasicTokenIntrospectionResponse, BasicTokenType,
 };
-use openidconnect::{reqwest, AccessToken, ExtraTokenFields, LanguageTag, TokenType};
+use oauth2::{
+    helpers, EmptyExtraTokenFields, EndpointNotSet, StandardErrorResponse, StandardRevocableToken,
+    StandardTokenResponse,
+};
+use openidconnect::core::{
+    CoreAuthPrompt, CoreAuthenticationFlow, CoreClient, CoreErrorResponseType, CoreGenderClaim,
+    CoreIdTokenFields, CoreProviderMetadata, CoreResponseType, CoreRevocationErrorResponse,
+    CoreTokenIntrospectionResponse, CoreTokenResponse, CoreTokenType,
+};
+use openidconnect::{
+    reqwest, AccessToken, AdditionalClaims, Client, EmptyAdditionalClaims, ExtraTokenFields,
+    GenderClaim, IdTokenFields, JweContentEncryptionAlgorithm, JwsSigningAlgorithm, LanguageTag,
+    TokenResponse, TokenType,
+};
 use openidconnect::{
     AccessTokenHash, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, RefreshToken, Scope,
-    TokenResponse,
 };
 use std::ops::Deref;
 use std::process::exit;
+use sysinfo::System;
 use url::Url;
 
 use openidconnect::core::{
@@ -98,10 +111,10 @@ const html_success_response: &str = r#"
     </html>
     "#;
 
-struct GoogleUserInfo {
+struct ThirdPartyAuthInfo {
     first_name: String,
     last_name: Option<String>,
-    google_id: String,
+    user_id: String,
     email: String,
     username: String,
     profile_url: Option<String>,
@@ -118,11 +131,24 @@ fn handle_error<T: std::error::Error>(fail: &T, msg: &'static str) {
     exit(1);
 }
 
-//#[tokio::test]
-pub async fn google_auth() -> Result<(), anyhow::Error> {
+pub async fn tp_auth(provider: &str) -> Result<(), anyhow::Error> {
     dotenv::dotenv().ok();
-    let google_client_id = std::env::var("GOOGLE_CLIENT_ID")?;
+
+    let Some((client_id, client_secret, ms_tenant_id, redirect_url)) = match provider {
+        "GOOGLE" => {
+            std::env::var("GOOGLE_CLIENT_ID")?;
+        }
+        "MS" => {}
+        "GITHUB" => {}
+    };
+    let google_client_id =
     let google_client_secret = std::env::var("GOOGLE_CLIENT_SECRET")?;
+
+    let ms_client_id = std::env::var("MS_CLIENT_ID")?;
+    let ms_client_secret = std::env::var("MS_CLIENT_SECRET")?;
+    let ms_tenant_id = std::env::var("MS_TENANT_ID")?;
+    let ms_redirect_url = "http://localhost:8080";
+
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -161,10 +187,7 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
         .additional_metadata()
         .revocation_endpoint
         .clone();
-    println!(
-        "Discovered Google revocation endpoint: {}",
-        revocation_endpoint
-    );
+
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
         ClientId::new(google_client_id),
@@ -247,13 +270,6 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
         (code, state)
     };
 
-    println!("Google returned the following code:\n{}\n", code.secret());
-    println!(
-        "Google returned the following state:\n{} (expected `{}`)\n",
-        state.secret(),
-        csrf_token.secret()
-    );
-
     let token_response = client
         .exchange_code(code)
         // This needs to be done before exchange_code returns the Result
@@ -268,12 +284,6 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
             handle_error(&err, "Failed to contact token endpoint");
             unreachable!();
         });
-
-    println!(
-        "Google returned access token:\n{}\n",
-        token_response.access_token().secret()
-    );
-    println!("Google returned scopes: {:?}", token_response.scopes());
 
     let id_token_verifier: CoreIdTokenVerifier = client.id_token_verifier();
     let id_token_claims: &CoreIdTokenClaims = token_response
@@ -293,7 +303,6 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
         Some(token) => token.into(),
         None => token_response.access_token().into(),
     };
-    //let c = id_token_claims.given_name().unwrap()
 
     let userinfo: CoreUserInfoClaims = client
         .user_info(token_response.access_token().to_owned(), None)?
@@ -301,7 +310,7 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
         .await
         .map_err(|err| anyhow!("Failed requesting user info: {}", err))?;
 
-    let GI = create_tp_user(userinfo, "GOOGLE").await.unwrap();
+    let GI = create_tp_user(userinfo).await.unwrap();
 
     client
         .revoke_token(token_to_revoke)
@@ -319,16 +328,10 @@ pub async fn google_auth() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-struct AuthFailure {
-    error: String,
-    error_description: String,
-    error_codes: Vec<i32>,
-    timestamp: String,
-    trace_id: String,
-    correlation_id: String,
-}
-//Create a custom Token Reciever
+use serde::de::DeserializeOwned;
+use std::fmt::{Debug, Display, Formatter};
+
+//Create a custom Token Reciever to correctly parse the 'expires_in' value
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AzureTokenResponse<EF, TT>
 where
@@ -353,24 +356,136 @@ where
     #[serde(flatten)]
     extra_fields: EF,
 }
+use std::time::Duration;
 
 impl<EF, TT> AzureTokenResponse<EF, TT>
 where
     EF: ExtraTokenFields,
     TT: TokenType,
 {
-    /*
-    Code Goes Here
-    */
+    pub fn new(access_token: AccessToken, token_type: TT, extra_fields: EF) -> Self {
+        Self {
+            access_token,
+            token_type,
+            expires_in: None,
+            refresh_token: None,
+            scopes: None,
+            extra_fields,
+        }
+    }
+
+    pub fn set_access_token(&mut self, access_token: AccessToken) {
+        self.access_token = access_token;
+    }
+
+    pub fn set_token_type(&mut self, token_type: TT) {
+        self.token_type = token_type;
+    }
+
+    pub fn set_expires_in(&mut self, expires_in: Option<&Duration>) {
+        self.expires_in = expires_in.map(|duration| (duration.as_secs() as u64).to_string());
+    }
+
+    pub fn set_refresh_token(&mut self, refresh_token: Option<RefreshToken>) {
+        self.refresh_token = refresh_token;
+    }
+
+    pub fn set_scopes(&mut self, scopes: Option<Vec<Scope>>) {
+        self.scopes = scopes;
+    }
+
+    pub fn extra_fields(&self) -> &EF {
+        &self.extra_fields
+    }
+
+    pub fn set_extra_fields(&mut self, extra_fields: EF) {
+        self.extra_fields = extra_fields;
+    }
 }
 
-impl<EF, TT> TokenResponse<TT> for AzureTokenResponse<EF, TT>
+impl<EF, TT> OAuth2TokenResponse for AzureTokenResponse<EF, TT>
 where
     EF: ExtraTokenFields,
     TT: TokenType,
 {
-    /*Code goes here */
+    type TokenType = TT; // Add this line to define the associated type
+
+    fn access_token(&self) -> &AccessToken {
+        &self.access_token
+    }
+
+    fn token_type(&self) -> &TT {
+        &self.token_type
+    }
+
+    fn expires_in(&self) -> Option<Duration> {
+        self.expires_in.as_ref().map(|dur| {
+            let secs = dur.as_str().parse::<u64>();
+            let secs_success = match secs {
+                Ok(value) => value,
+                Err(error) => {
+                    println!("Unsuccessfully parsed string to u64: {:?}", error);
+                    0
+                }
+            };
+            Duration::new(secs_success, 0)
+        })
+    }
+
+    fn refresh_token(&self) -> Option<&RefreshToken> {
+        self.refresh_token.as_ref()
+    }
+
+    fn scopes(&self) -> Option<&Vec<Scope>> {
+        self.scopes.as_ref()
+    }
 }
+
+impl<AC, EF, GC, JE, JS, TT> TokenResponse<AC, GC, JE, JS>
+    for AzureTokenResponse<IdTokenFields<AC, EF, GC, JE, JS>, TT>
+where
+    AC: AdditionalClaims,
+    EF: ExtraTokenFields,
+    GC: GenderClaim,
+    JE: JweContentEncryptionAlgorithm<KeyType = JS::KeyType>,
+    JS: JwsSigningAlgorithm,
+    TT: TokenType,
+{
+    fn id_token(&self) -> Option<&openidconnect::IdToken<AC, GC, JE, JS>> {
+        self.extra_fields.id_token()
+    }
+}
+
+pub type AzureCoreTokenResponse = AzureTokenResponse<CoreIdTokenFields, CoreTokenType>;
+
+pub type AzureCoreClient<
+    HasAuthUrl = EndpointNotSet,
+    HasDeviceAuthUrl = EndpointNotSet,
+    HasIntrospectionUrl = EndpointNotSet,
+    HasRevocationUrl = EndpointNotSet,
+    HasTokenUrl = EndpointNotSet,
+    HasUserInfoUrl = EndpointNotSet,
+> = Client<
+    EmptyAdditionalClaims,
+    CoreAuthDisplay,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJsonWebKey,
+    CoreAuthPrompt,
+    StandardErrorResponse<CoreErrorResponseType>,
+    AzureCoreTokenResponse,
+    CoreTokenIntrospectionResponse,
+    CoreRevocableToken,
+    CoreRevocationErrorResponse,
+    HasAuthUrl,
+    HasDeviceAuthUrl,
+    HasIntrospectionUrl,
+    HasRevocationUrl,
+    HasTokenUrl,
+    HasUserInfoUrl,
+>;
+
+//pub type AzureCoreToken = ;
 
 #[tokio::test]
 async fn ms_auth() -> Result<(), anyhow::Error> {
@@ -400,7 +515,6 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
             Scope::new("profile".to_string()),
         ]))
         .set_claims_supported(Some(vec![
-            // Providers may also define an enum instead of using CoreClaimName.
             CoreClaimName::new("sub".to_string()),
             CoreClaimName::new("aud".to_string()),
             CoreClaimName::new("email".to_string()),
@@ -415,12 +529,13 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
             CoreClaimName::new("locale".to_string()),
         ]));
 
-    let client = CoreClient::from_provider_metadata(
+    // Use CoreClient instead of AzureCoreClient for now
+    // We'll need to handle the custom token response in a different way
+    let client = AzureCoreClient::from_provider_metadata(
         provider_metadata,
         ClientId::new(ms_client_id),
         Some(ClientSecret::new(ms_client_secret)),
     )
-    // Set the URL the user will be redirected to after the authorization process.
     .set_redirect_uri(
         RedirectUrl::new("http://localhost:8080".to_string()).unwrap_or_else(|err| {
             handle_error(&err, "Invalid redirect URL");
@@ -437,22 +552,12 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        // Set the desired scopes.
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
-        // Set the PKCE code challenge.
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    // This is the URL you should redirect the user to, in order to trigger the authorization
-    // process.
     println!("Browse to: {}", auth_url);
-
-    // Once the user has been redirected to the redirect URL, you'll have access to the
-    // authorization code. For security reasons, your code should verify that the `state`
-    // parameter returned by the server matches `csrf_state`.
-
-    // Now you can exchange it for an access token and ID token.
 
     let (code, state) = {
         // A very naive implementation of the redirect server.
@@ -481,17 +586,11 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
             .map(|(_, state)| CsrfToken::new(state.into_owned()))
             .unwrap();
 
-        let json_response = r#"{"message": "Authorization received"}"#;
         let response = format!(
-            "HTTP/1.1 200 OK\r\n\
-                 Content-Type: application/json; charset=utf-8\r\n\
-                 Content-Length: {}\r\n\r\n\
-                 {}",
-            json_response.len(),
-            json_response
-        );
-
-        println!("✅ Sending response:\n{}", response); // Debugging
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                html_success_response.len(),
+                html_success_response
+            );
 
         stream.write_all(response.as_bytes()).unwrap();
         (code, state)
@@ -507,9 +606,9 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
         csrf_token.secret()
     );
 
+    // Exchange the authorization code for a token
     let token_response = client
         .exchange_code(code)
-        // This needs to be done before exchange_code returns the Result
         .unwrap_or_else(|err| {
             handle_error(&err, "No user info endpoint");
             unreachable!();
@@ -541,20 +640,15 @@ async fn ms_auth() -> Result<(), anyhow::Error> {
 
     println!("{:?}", id_token_claims);
 
-    // Revoke the obtained token
-    let token_to_revoke: CoreRevocableToken = match token_response.refresh_token() {
-        Some(token) => token.into(),
-        None => token_response.access_token().into(),
-    };
-    //let c = id_token_claims.given_name().unwrap()
-
+    // Get user info
     let userinfo: CoreUserInfoClaims = client
         .user_info(token_response.access_token().to_owned(), None)?
         .request_async(&http_client)
         .await
         .map_err(|err| anyhow!("Failed requesting user info: {}", err))?;
 
-    // let MI = create_tp_user(userinfo, "MICROSOFT").await.unwrap();
+    // Create user from userinfo
+    let ms_user = create_tp_user(userinfo).await.unwrap();
 
     Ok(())
 }
@@ -568,66 +662,59 @@ async fn github_auth() -> Result<(), anyhow::Error> {
     "Hi".to_string()
 }*/
 use std::cell::RefCell;
-async fn create_tp_user(
-    user_info: CoreUserInfoClaims,
-    provider: &str,
-) -> Result<(String), anyhow::Error> {
-    match provider {
-        "GOOGLE" => {
-            let google_id = user_info.subject().to_string();
-            let email = user_info.email().unwrap().to_string();
-            let first_name = user_info
-                .given_name()
-                .unwrap()
-                .get(None)
-                .unwrap()
-                .to_string();
-            let username = email.split('@').collect::<Vec<&str>>()[0].to_string();
-            let lang = LanguageTag::new(String::from("en"));
-            if user_info.locale().is_none() {
-                user_info.clone().set_locale(Some(lang.clone()));
-            }
-
-            let mut last_name = user_info
-                .family_name()
-                .and_then(|name| name.get(None).map(|s| s.to_string()));
-
-            let profile_url = user_info
-                .picture()
-                .and_then(|pic| pic.get(None).map(|s| s.to_string()));
-
-            let provider = "GOOGLE";
-            //let username = generate_username();
-            /*let new_google_user = GoogleUserInfo{
-                google_id,
-                first_name,
-            }*/
-            println!("FIRST NAME: {:?}: ", first_name);
-            println!("LAST NAME: {:?}", last_name);
-            println!("GOOGLE ID: {:?}: ", google_id);
-            println!("EMAIL: {:?}", email);
-            println!("USERNAME: {:?}", username);
-            println!("PICTURE URL: {:?}", profile_url);
-
-            let google_user = GoogleUserInfo {
-                first_name,
-                last_name,
-                google_id,
-                email,
-                username,
-                profile_url,
-            };
-            //println!("LAST NAME: {:?}", last_name);
-            //println!("PICTURE URL: {}", picture_url);
-
-            (return Ok("".to_string()))
-        }
-        "MS" => {}
-        "GH" => {}
-        _ => {}
+async fn create_tp_user(user_info: CoreUserInfoClaims) -> Result<(String), anyhow::Error> {
+    let user_id = user_info.subject().to_string();
+    let email = user_info.email().unwrap().to_string();
+    let first_name = user_info
+        .given_name()
+        .unwrap()
+        .get(None)
+        .unwrap()
+        .to_string();
+    let username = email.split('@').collect::<Vec<&str>>()[0].to_string();
+    let lang = LanguageTag::new(String::from("en"));
+    if user_info.locale().is_none() {
+        user_info.clone().set_locale(Some(lang.clone()));
     }
 
-    Ok(("".to_string()))
+    let mut last_name = user_info
+        .family_name()
+        .and_then(|name| name.get(None).map(|s| s.to_string()));
+
+    let profile_url = user_info
+        .picture()
+        .and_then(|pic| pic.get(None).map(|s| s.to_string()));
+
+    let provider = "GOOGLE";
+    //let username = generate_username();
+    /*let new_google_user = GoogleUserInfo{
+        google_id,
+        first_name,
+    }*/
+    println!("FIRST NAME: {:?}: ", first_name);
+    println!("LAST NAME: {:?}", last_name);
+    println!("USER ID: {:?}: ", user_id);
+    println!("EMAIL: {:?}", email);
+    println!("USERNAME: {:?}", username);
+    println!("PICTURE URL: {:?}", profile_url);
+
+    let google_user = ThirdPartyAuthInfo {
+        first_name,
+        last_name,
+        user_id,
+        email,
+        username,
+        profile_url,
+    };
+    //println!("LAST NAME: {:?}", last_name);
+    //println!("PICTURE URL: {}", picture_url);
+
+    (return Ok("".to_string()));
 }
 
-async fn find_google_user() {}
+async fn find_user() {}
+
+#[tokio::test]
+async fn tp_tester_function() {
+    let provider = "GOOGLE";
+}
