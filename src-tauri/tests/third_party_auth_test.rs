@@ -1,6 +1,6 @@
 #![allow(unused)]
 #![allow(warnings)]
-use anyhow::anyhow;
+use anyhow::{anyhow, Ok};
 #[cfg(test)]
 use do_username::do_username;
 use env_logger::fmt::Timestamp;
@@ -10,18 +10,22 @@ use oauth2::basic::{
     BasicTokenIntrospectionResponse, BasicTokenType,
 };
 use oauth2::{
-    helpers, EmptyExtraTokenFields, EndpointNotSet, StandardErrorResponse, StandardRevocableToken,
-    StandardTokenResponse,
+    helpers, AsyncHttpClient, AuthUrl, CodeTokenRequest, ConfigurationError, EmptyExtraTokenFields,
+    EndpointNotSet, EndpointState, ErrorResponse, PkceCodeVerifier, RevocableToken,
+    RevocationRequest, StandardErrorResponse, StandardRevocableToken, StandardTokenResponse,
+    TokenIntrospectionResponse,
 };
 use openidconnect::core::{
     CoreAuthPrompt, CoreAuthenticationFlow, CoreClient, CoreErrorResponseType, CoreGenderClaim,
-    CoreIdTokenFields, CoreProviderMetadata, CoreResponseType, CoreRevocationErrorResponse,
-    CoreTokenIntrospectionResponse, CoreTokenResponse, CoreTokenType,
+    CoreIdTokenFields, CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType,
+    CoreRevocationErrorResponse, CoreTokenIntrospectionResponse, CoreTokenResponse, CoreTokenType,
 };
 use openidconnect::{
-    reqwest, AccessToken, AdditionalClaims, Client, EmptyAdditionalClaims, ExtraTokenFields,
-    GenderClaim, IdTokenFields, JweContentEncryptionAlgorithm, JwsSigningAlgorithm, LanguageTag,
-    TokenResponse, TokenType,
+    reqwest, AccessToken, AdditionalClaims, AuthDisplay, AuthPrompt, AuthorizationRequest, Client,
+    EmptyAdditionalClaims, ExtraTokenFields, GenderClaim, IdTokenFields, IdTokenVerifier,
+    JsonWebKey, JsonWebKeySetUrl, JweContentEncryptionAlgorithm, JwsSigningAlgorithm, LanguageTag,
+    ResponseType, ResponseTypes, SubjectIdentifier, SubjectIdentifierType, TokenResponse,
+    TokenType, UserInfoRequest,
 };
 use openidconnect::{
     AccessTokenHash, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
@@ -29,8 +33,9 @@ use openidconnect::{
 };
 use std::ops::Deref;
 use std::process::exit;
+use std::str::FromStr;
 use sysinfo::System;
-use url::Url;
+use url::{ParseError, Url};
 
 use openidconnect::core::{
     CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClientAuthMethod, CoreGrantType,
@@ -120,6 +125,29 @@ struct ThirdPartyAuthInfo {
     profile_url: Option<String>,
 }
 
+struct ClientCredentials {
+    issuer_url: IssuerUrl,
+    client_id: ClientId,
+    client_secret: ClientSecret,
+    tenant_id: Option<String>,
+}
+
+struct ProviderDetails<RT, S, K, A>
+where
+    RT: ResponseType,
+    S: SubjectIdentifierType,
+    K: JsonWebKey,
+    A: AdditionalProviderMetadata,
+{
+    issuer_url: IssuerUrl,
+    auth_endpoint_url: AuthUrl,
+    jwks_url: JsonWebKeySetUrl,
+    rts: Vec<ResponseTypes<RT>>,
+    sts: Vec<S>,
+    id_tsavs: Vec<K::SigningAlgorithm>,
+    additional_md: A,
+}
+
 fn handle_error<T: std::error::Error>(fail: &T, msg: &'static str) {
     let mut err_msg = format!("ERROR: {}", msg);
     let mut cur_fail: Option<&dyn std::error::Error> = Some(fail);
@@ -131,74 +159,291 @@ fn handle_error<T: std::error::Error>(fail: &T, msg: &'static str) {
     exit(1);
 }
 
-pub async fn tp_auth(provider: &str) -> Result<(), anyhow::Error> {
-    dotenv::dotenv().ok();
+#[tokio::test]
+pub async fn tp_auth_helper() -> Result<(), anyhow::Error> {
+    tp_auth("GOOGLE").await
+}
+/*let google_pm = ProviderDetails {
+issuer_url: IssuerUrl::new(String::from(
+    "https://accounts.google.com/o/oauth2/v2/auth",
+))?, //String::from("https://accounts.google.com/o/oauth2/v2/auth"),
+auth_endpoint_url: AuthUrl::new(String::from(
+    "https://accounts.google.com/o/oauth2/v2/auth",
+))?,
+jwks_url: JsonWebKeySetUrl::new(String::from(
+    "https://www.googleapis.com/oauth2/v3/certs",
+))?,
+rts: Vec::new(),
+sts: Vec::new(),
+id_tsavs: Vec::new(),
+additional_md: ,
+};*/
 
-    let Some((client_id, client_secret, ms_tenant_id, redirect_url)) = match provider {
+/*
+pub trait ProviderMetadataType {
+    fn issuer(&self) -> &IssuerUrl;
+    fn authorization_endpoint(&self) -> &AuthUrl;
+    fn jwks_url(&self) -> &JsonWebKeySetUrl;
+    fn rts(&self) -> &Vec<ResponseTypes<CoreResponseType>>;
+    fn sts(&self) -> &Vec<CoreSubjectIdentifierType>;
+    fn PmA_revocation_url(&self) -> String {
+        String::new()
+    }
+}
+
+impl ProviderMetadataType for GoogleProviderMetadata {
+    fn issuer(&self) -> &IssuerUrl {
+        self.issuer()
+    }
+    fn authorization_endpoint(&self) -> &AuthUrl {
+        self.authorization_endpoint()
+    }
+    fn jwks_url(&self) -> &JsonWebKeySetUrl {
+        self.jwks_uri()
+    }
+    fn rts(&self) -> &Vec<ResponseTypes<CoreResponseType>> {
+        self.response_types_supported()
+    }
+
+    fn sts(&self) -> &Vec<CoreSubjectIdentifierType> {
+        self.subject_types_supported()
+    }
+
+    fn PmA_revocation_url(&self) -> String {
+        self.additional_metadata().revocation_endpoint.clone()
+    }
+}
+
+impl ProviderMetadataType for CoreProviderMetadata {
+    fn issuer(&self) -> &IssuerUrl {
+        self.issuer()
+    }
+    fn authorization_endpoint(&self) -> &AuthUrl {
+        self.authorization_endpoint()
+    }
+    fn jwks_url(&self) -> &JsonWebKeySetUrl {
+        self.jwks_uri()
+    }
+    fn rts(&self) -> &Vec<ResponseTypes<CoreResponseType>> {
+        self.response_types_supported()
+    }
+
+    fn sts(&self) -> &Vec<CoreSubjectIdentifierType> {
+        self.subject_types_supported()
+    }
+}
+*/
+#[derive(Debug)] // Added Debug derive for easier printing if needed
+pub enum DiscoveredMetadata {
+    Google(GoogleProviderMetadata), // Variant holding the configured Google metadata
+    Core(CoreProviderMetadata),     // Variant holding the configured Core metadata
+                                    // Add other variants here if you support more providers with distinct types
+}
+/*
+id_token_verifier
+exchange_code
+authorize_url
+user_info
+revoke_token
+*/
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait OidcClientActions<'c, C>
+where
+    // Bounds remain the same
+    C: AsyncHttpClient<'c> + 'static + Sync,
+    <C as AsyncHttpClient<'c>>::Error: std::error::Error + Send + Sync + 'static,
+{
+    // No generics on the trait itself!
+    // Use concrete types where they are likely the same (adjust if needed)
+    fn authorize_url(
+        &self,
+        // Pass necessary parameters, maybe simplify inputs/outputs
+        // Consider returning just (Url, CsrfToken, Nonce)
+        // This needs careful design based on how authorize_url builder is used.
+        // ...
+    ) -> (Url, CsrfToken, Nonce);
+
+    fn id_token_verifier(&self) -> CoreIdTokenVerifier; // Assuming Core verifier is okay
+
+    // Use associated types if return types differ significantly (e.g., TokenResponse)
+    // type ActualTokenResponse: TokenResponse + Send + Sync; // Example associated type
+
+    async fn exchange_code(
+        &self,
+        code: AuthorizationCode,
+        pkce_verifier: PkceCodeVerifier,
+        http_client: &'c C, // Pass http client reference
+    ) -> Result<CoreTokenResponse, anyhow::Error>; // Use concrete type if possible, or associated type
+
+    async fn user_info(
+        &self,
+        access_token: AccessToken, // Pass owned token
+        http_client: &'c C,
+    ) -> Result<CoreUserInfoClaims, anyhow::Error>; // Assuming Core claims
+
+    async fn revoke_token(
+        &self,
+        token: CoreRevocableToken, // Assuming Core revocable token
+        http_client: &'c C,
+    ) -> Result<(), anyhow::Error>;
+
+    // Helper to check if revocation is configured (optional)
+    fn get_revocation_url(&self) -> Option<&RevocationUrl>;
+}
+
+impl OidcClientActions for CoreClient <'c, C>
+where
+    // Bounds remain the same
+    C: AsyncHttpClient<'c> + 'static + Sync,
+    <C as AsyncHttpClient<'c>>::Error: std::error::Error + Send + Sync + 'static,
+{
+    fn user_info<'life0,'async_trait>(&'life0 self,access_token:AccessToken,http_client: &'c C,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<CoreUserInfoClaims,anyhow::Error> > + ::core::marker::Send+'async_trait> >where 'c:'async_trait,'life0:'async_trait,Self:'async_trait {
+
+    }
+}
+
+pub enum ClientCoreTypes {
+    Core(CoreClient),
+    Azure(AzureCoreClient),
+}
+
+pub async fn get_provider_md<'c, C>(
+    provider: &str,
+    issuer_url: IssuerUrl,
+    http_client: &'c C,
+    client_creds: ClientCredentials,
+) -> Result<, anyhow::Error>
+// Return the enum now
+where
+    // Bounds remain the same
+    C: AsyncHttpClient<'c> + 'static + Sync,
+    <C as AsyncHttpClient<'c>>::Error: std::error::Error + Send + Sync + 'static,
+{
+    // Common configuration (can be defined once)
+    let scopes = Some(vec![
+        Scope::new("openid".to_string()),
+        Scope::new("email".to_string()),
+        Scope::new("profile".to_string()),
+    ]);
+    let claims = Some(vec![
+        CoreClaimName::new("sub".to_string()),
+        CoreClaimName::new("aud".to_string()),
+        CoreClaimName::new("email".to_string()),
+        CoreClaimName::new("email_verified".to_string()),
+        CoreClaimName::new("exp".to_string()),
+        CoreClaimName::new("iat".to_string()),
+        CoreClaimName::new("iss".to_string()),
+        CoreClaimName::new("name".to_string()),
+        CoreClaimName::new("given_name".to_string()),
+        CoreClaimName::new("family_name".to_string()),
+        CoreClaimName::new("picture".to_string()),
+        CoreClaimName::new("locale".to_string()),
+    ]);
+
+    match provider {
         "GOOGLE" => {
-            std::env::var("GOOGLE_CLIENT_ID")?;
+            // 1. Discover
+            let discovered_metadata =
+                GoogleProviderMetadata::discover_async(issuer_url, http_client)
+                    .await?
+                    .set_scopes_supported(scopes) // Pass the defined scopes
+                    .set_claims_supported(claims); // Pass the defined claims
+
+            let revocation_endpoint = discovered_metadata
+                .additional_metadata()
+                .revocation_endpoint
+                .clone();
+
+            let client = CoreClient::from_provider_metadata(
+                discovered_metadata,
+                client_creds.client_id,
+                Some(client_creds.client_secret),
+            )
+            .set_revocation_url(
+                RevocationUrl::new(revocation_endpoint).unwrap_or_else(|err| {
+                    handle_error(&err, "Invalid revocation endpoint URL");
+                    unreachable!();
+                }),
+            );
+
+            Ok(client)
         }
-        "MS" => {}
-        "GITHUB" => {}
+        _ => {
+            // Assuming others use CoreProviderMetadata for now
+            // 1. Discover
+            let discovered_metadata = CoreProviderMetadata::discover_async(issuer_url, http_client)
+                .await?
+                .set_scopes_supported(scopes)
+                .set_claims_supported(claims);
+            // 2. Configure the concrete type
+            let client = AzureCoreClient::from_provider_metadata(
+                discovered_metadata,
+                client_creds.client_id,
+                Some(client_creds.client_secret),
+            );
+
+            // 3. Wrap in the enum variant and Ok
+            Ok(client)
+        }
+    }
+}
+
+/*pub async fn create_client(provider: &str) -> Result<(ClientCredentials), anyhow::Error> {
+    dotenv::dotenv().ok();
+    const redirect_url: &str = "http://localhost:8080";
+    let client_creds: ClientCredentials = match provider {
+        "GOOGLE" => ClientCredentials {
+            issuer_url: IssuerUrl::new(String::from("https://accounts.google.com"))?,
+            client_id: ClientId::new(std::env::var("GOOGLE_CLIENT_ID")?),
+            client_secret: ClientSecret::new(std::env::var("GOOGLE_CLIENT_SECRET")?),
+            tenant_id: None,
+        },
+        "MS" => {
+            let tenant_id = std::env::var("MS_TENANT_ID")?;
+            ClientCredentials {
+                issuer_url: IssuerUrl::new(format!("https://sts.windows.net/{}/", tenant_id))?, // Example issuer URL
+                client_id: ClientId::new(std::env::var("MS_CLIENT_ID")?),
+                client_secret: ClientSecret::new(std::env::var("MS_CLIENT_SECRET")?),
+                tenant_id: Some(tenant_id.clone()),
+            }
+        }
+        _ => ClientCredentials {
+            issuer_url: IssuerUrl::new(String::from("https://accounts.google.com"))?, // Example issuer URL
+            client_id: ClientId::new(std::env::var("MS_CLIENT_ID")?),
+            client_secret: ClientSecret::new(std::env::var("MS_CLIENT_SECRET")?),
+            tenant_id: None,
+        },
     };
-    let google_client_id =
-    let google_client_secret = std::env::var("GOOGLE_CLIENT_SECRET")?;
+    return Ok(client_creds);
+}
 
-    let ms_client_id = std::env::var("MS_CLIENT_ID")?;
-    let ms_client_secret = std::env::var("MS_CLIENT_SECRET")?;
-    let ms_tenant_id = std::env::var("MS_TENANT_ID")?;
-    let ms_redirect_url = "http://localhost:8080";
+pub async fn google_auth<'c, C>(
+    provider: &str,
+    http_client: &'c C,
+) -> Result<(Client), anyhow::Error>
+where
+    // Bounds remain the same
+    C: AsyncHttpClient<'c> + 'static + Sync,
+    <C as AsyncHttpClient<'c>>::Error: std::error::Error + Send + Sync + 'static,
+{
+    let client_creds = create_client(provider).await?;
 
-    let http_client = reqwest::ClientBuilder::new()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("Client should build");
+    let discovered_metadata =
+        GoogleProviderMetadata::discover_async(client_creds.issuer_url, http_client).await?;
+    //.set_scopes_supported(scopes) // Pass the defined scopes
+    //.set_claims_supported(claims);
 
-    let issuer_url =
-        IssuerUrl::new("https://accounts.google.com".to_string()).unwrap_or_else(|err| {
-            handle_error(&err, "Invalid issuer URL");
-            unreachable!();
-        });
-
-    let provider_metadata = GoogleProviderMetadata::discover_async(issuer_url, &http_client)
-        .await?
-        .set_scopes_supported(Some(vec![
-            Scope::new("openid".to_string()),
-            Scope::new("email".to_string()),
-            Scope::new("profile".to_string()),
-        ]))
-        .set_claims_supported(Some(vec![
-            // Providers may also define an enum instead of using CoreClaimName.
-            CoreClaimName::new("sub".to_string()),
-            CoreClaimName::new("aud".to_string()),
-            CoreClaimName::new("email".to_string()),
-            CoreClaimName::new("email_verified".to_string()),
-            CoreClaimName::new("exp".to_string()),
-            CoreClaimName::new("iat".to_string()),
-            CoreClaimName::new("iss".to_string()),
-            CoreClaimName::new("name".to_string()),
-            CoreClaimName::new("given_name".to_string()),
-            CoreClaimName::new("family_name".to_string()),
-            CoreClaimName::new("picture".to_string()),
-            CoreClaimName::new("locale".to_string()),
-        ]));
-
-    let revocation_endpoint = provider_metadata
+    let revocation_endpoint = discovered_metadata
         .additional_metadata()
         .revocation_endpoint
         .clone();
 
     let client = CoreClient::from_provider_metadata(
-        provider_metadata,
-        ClientId::new(google_client_id),
-        Some(ClientSecret::new(google_client_secret)),
-    )
-    // Set the URL the user will be redirected to after the authorization process.
-    .set_redirect_uri(
-        RedirectUrl::new("http://localhost:8080".to_string()).unwrap_or_else(|err| {
-            handle_error(&err, "Invalid redirect URL");
-            unreachable!();
-        }),
+        discovered_metadata,
+        client_creds.client_id,
+        Some(client_creds.client_secret),
     )
     .set_revocation_url(
         RevocationUrl::new(revocation_endpoint).unwrap_or_else(|err| {
@@ -206,6 +451,85 @@ pub async fn tp_auth(provider: &str) -> Result<(), anyhow::Error> {
             unreachable!();
         }),
     );
+
+    Ok((client))
+}*/
+
+pub async fn tp_auth(provider: &str) -> Result<(), anyhow::Error> {
+    const redirect_url: &str = "http://localhost:8080";
+    //let google_additional_md = GoogleProviderMetadata::additional_metadata();
+    //let cm = CoreProviderMetadata::new(issuer, authorization_endpoint, jwks_uri, response_types_supported, subject_types_supported, id_token_signing_alg_values_supported, additional_metadata)
+
+    let scopes = Some(vec![
+        Scope::new("openid".to_string()),
+        Scope::new("email".to_string()),
+        Scope::new("profile".to_string()),
+    ]);
+    let claims = Some(vec![
+        CoreClaimName::new("sub".to_string()),
+        CoreClaimName::new("aud".to_string()),
+        CoreClaimName::new("email".to_string()),
+        CoreClaimName::new("email_verified".to_string()),
+        CoreClaimName::new("exp".to_string()),
+        CoreClaimName::new("iat".to_string()),
+        CoreClaimName::new("iss".to_string()),
+        CoreClaimName::new("name".to_string()),
+        CoreClaimName::new("given_name".to_string()),
+        CoreClaimName::new("family_name".to_string()),
+        CoreClaimName::new("picture".to_string()),
+        CoreClaimName::new("locale".to_string()),
+    ]);
+
+    let http_client = reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|err| {
+            handle_error(&err, "Failed to build HTTP client");
+            unreachable!();
+        });
+    /*
+    let authentication_url =
+        AuthUrl::new(Url::parse("https://accounts.google.com/o/oauth2/v2/auth")?.to_string())?;
+
+    use url::Url;
+
+    let jwts_uri = JsonWebKeySetUrl::new(
+        Url::parse("https://www.googleapis.com/oauth2/v3/certs")?.to_string(),
+    )?;
+
+    let rt = ResponseTypes::new(Vec::new());
+    //  let issuer_url = match provider{}
+
+        let gpmd = get_provider_md(
+            provider,
+            client_creds.issuer_url,
+            &http_client,
+            client_creds,
+        )
+        .await?;
+        let ci = ClientId::new(client_creds.client_id);
+        let cs = ClientSecret::new(client_creds.client_secret);
+
+        let client = match gpmd {
+            ClientCoreTypes::Core(core) => {
+                CoreClient::from_provider_metadata(google_meta, ci, Some(cs))
+                    .set_revocation_url(revocation_uri)
+            }
+
+            ClientCoreTypes::Azure(azure) => {
+                CoreClient::from_provider_metadata(core_meta, ci, Some(cs))
+            }
+        }
+        .set_redirect_uri(
+            RedirectUrl::new("http://localhost:8080".to_string()).unwrap_or_else(|err| {
+                handle_error(&err, "Invalid redirect URL");
+                unreachable!();
+            }),
+        );
+    */
+    //&*get_provider_md(provider, issuer_url, &http_client).await?;
+
+    // Set the URL the user will be redirected to after the authorization process.
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -486,7 +810,7 @@ pub type AzureCoreClient<
 >;
 
 //pub type AzureCoreToken = ;
-
+/*
 #[tokio::test]
 async fn ms_auth() -> Result<(), anyhow::Error> {
     dotenv::dotenv().ok();
@@ -711,7 +1035,7 @@ async fn create_tp_user(user_info: CoreUserInfoClaims) -> Result<(String), anyho
 
     (return Ok("".to_string()));
 }
-
+*/
 async fn find_user() {}
 
 #[tokio::test]
