@@ -42,6 +42,11 @@ pub struct OTPVerReq {
     pub entered_code: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct AuthInitiateRequest {
+    provider: String,
+}
+
 #[derive(Deserialize)]
 pub struct LoginReq {
     //The user can either log in with a username or email
@@ -227,6 +232,25 @@ pub async fn otp_verify_handler(
         ),
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!(e.to_string()))),
     }
+}
+
+#[path = "../service/google_auth.rs"]
+mod google;
+#[path = "../service/ms_auth.rs"]
+mod microsoft;
+/*#[path = "../service/google_auth.rs"]
+mod github;
+*/
+pub async fn oauth_callback_handler(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(payload): Json<AuthInitiateRequest>,
+) -> Result<impl IntoResponse, anyhow::Error> {
+    match payload.provider.as_str() {
+        "GOOGLE" => google::google_auth().await?,
+        "MS" => microsoft::ms_auth()
+        _ =>
+    }
+    Ok((StatusCode::OK, Json(json!({"message": "Login successful"}))))
 }
 
 //Personalized handlers just store the info in the Database.

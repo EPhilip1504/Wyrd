@@ -15,4 +15,6 @@ pub mod otp;
 #[path = "utils/password.rs"]
 pub mod password;
 
+#[path = "service/third_party_auth.rs"]
+pub mod tp_auth;
 //use auth_handler::{otp_verify_handler, resend_otp_handler, signup_handler, AppState};
